@@ -221,13 +221,35 @@
       .toggle-slider { width: 14px; height: 14px; }
       .toggle-switch.on .toggle-slider { left: 19px; }
     }
+    .auth-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 6000; display: none; align-items: center; justify-content: center; padding: 20px; }
+    .auth-overlay.active { display: flex; }
+    .auth-card { background: var(--surface); border-radius: 12px; padding: 20px; max-width: 380px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.35); border: 1px solid var(--border); }
+    .auth-title { font-size: 16px; font-weight: 800; color: var(--primary); margin-bottom: 6px; }
+    .auth-subtitle { font-size: 11px; color: var(--text-light); margin-bottom: 14px; }
+    .auth-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .auth-status { margin-top: 10px; font-size: 11px; color: var(--text-light); }
   </style>
 </head>
 <body>
+<div id="authOverlay" class="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-title">🔐 Login Required</div>
+    <div class="auth-subtitle">Create an account or sign in to use Music ConnectZ.</div>
+    <div class="form-group"><label>Username</label><input type="text" id="authOverlayUsername" placeholder="Optional display name" /></div>
+    <div class="form-group"><label>Email *</label><input type="email" id="authOverlayEmail" placeholder="you@email.com" /></div>
+    <div class="form-group"><label>Password *</label><input type="password" id="authOverlayPassword" placeholder="At least 8 characters" /></div>
+    <div class="auth-actions">
+      <button class="btn btn-success" onclick="registerUser(true)">📝 Register</button>
+      <button class="btn" onclick="loginUser(true)">🔓 Login</button>
+    </div>
+    <button class="btn btn-secondary" onclick="continueAsGuest()" style="width: 100%; margin-top: 10px;">👀 Continue as Guest</button>
+    <div class="auth-status" id="authOverlayStatus">Not logged in</div>
+  </div>
+</div>
 <div class="container">
   <div class="header">
     <div class="nav-wrapper"><button class="nav-btn" onclick="prevTab()">←</button><button class="nav-btn" onclick="nextTab()">→</button><button class="theme-toggle" onclick="toggleTheme()">🌙</button></div>
-    <div class="header-center"><div class="header-title">🎵 Music ConnectZ v6.1 bi K-Oth</div><div class="header-subtitle">Location-Based Collaboration • 1/24/2026</div></div>
+    <div class="header-center"><div class="header-title">🎵 Music ConnectZ v6.3 bi K-Oth</div><div class="header-subtitle">Location-Based Collaboration • 1/31/2026</div></div>
     <div class="header-right"><div class="balance" onclick="switchTab('money')">💰 $<span id="balanceAmount">0.00</span></div><div class="profile-pic" onclick="switchTab('profile')" id="headerPic">👤</div></div>
   </div>
 
@@ -439,6 +461,19 @@
     </div>
 
     <div id="settings" class="tab">
+      <div class="card">
+        <div class="card-header">🔐 Account (Password Login)</div>
+        <div class="form-group"><label>Username</label><input type="text" id="authUsername" placeholder="Optional display name" /></div>
+        <div class="form-group"><label>Email *</label><input type="email" id="authEmail" placeholder="you@email.com" /></div>
+        <div class="form-group"><label>Password *</label><input type="password" id="authPassword" placeholder="At least 8 characters" /></div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button class="btn btn-success" onclick="registerUser()" id="registerBtn">📝 Register</button>
+          <button class="btn" onclick="loginUser()" id="loginBtn">🔓 Login</button>
+          <button class="btn btn-secondary" onclick="logoutUser()" id="logoutBtn">🚪 Logout</button>
+        </div>
+        <div id="authStatus" style="margin-top: 10px; font-size: 11px; color: var(--text-light);">Not logged in</div>
+      </div>
+
       <div class="card">
         <div class="card-header">🎨 Theme Colors</div>
         <div class="theme-selector">
@@ -682,6 +717,7 @@ const instrumentDatabase = {
 
 let appState = {
   user: {name: '', email: '', phone: '', birthday: '', gender: '', location: '', bio: '', profilePic: null, lat: null, lng: null, rating: null},
+  auth: {loggedIn: false, user: null, guest: false},
   personas: [],
   examples: [],
   collabs: [],
@@ -706,6 +742,11 @@ let appState = {
   }
 };
 
+const apiBase = (() => {
+  // Always use localhost:3000 for API calls
+  return 'http://localhost:3000';
+})();
+
 function saveAppState() {
   const stateToSave = JSON.parse(JSON.stringify(appState));
   stateToSave.selectedSkillsInModal = Array.from(appState.selectedSkillsInModal);
@@ -718,6 +759,7 @@ function loadAppState() {
     const loaded = JSON.parse(saved);
     appState = {
       user: loaded.user || appState.user,
+      auth: loaded.auth || {loggedIn: false, user: null, guest: false},
       personas: loaded.personas || [],
       examples: loaded.examples || [],
       collabs: loaded.collabs || [],
@@ -1554,6 +1596,7 @@ function updateAllDisplays() {
   document.getElementById('gender').value = appState.user.gender;
   document.getElementById('location').value = appState.user.location;
   document.getElementById('bio').value = appState.user.bio;
+  updateAuthDisplay();
 }
 
 function toggleTheme() {
@@ -1646,6 +1689,146 @@ function renderMapUsers() {
     card.innerHTML = `<div class="user-card-header"><div class="user-card-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="user-card-title"><div class="user-name">${collab.userName}</div><div class="user-rating">⭐ ${avgRating} • 📍 ${distance.toFixed(1)}mi</div></div></div><div class="user-card-content"><div><strong>👤 Persona:</strong> ${collab.personaName}</div><div><strong>🎵 Work:</strong> ${collab.exampleTitle}</div>${req.minExperience ? `<div><strong>📊 Min Exp:</strong> ${req.minExperience} years</div>` : ''}<div><strong>💰 Budget:</strong> ${formatBudgetRange(req.budgetRange ?? req.budget)}</div><div><strong>📏 Distance:</strong> ${distance.toFixed(1)} miles max ${req.maxDistance ? `(Requested: ${req.maxDistance}mi)` : ''}</div>${req.ageRange ? `<div><strong>👥 Age Range:</strong> ${req.ageRange.min}-${req.ageRange.max} years</div>` : ''}<div><strong>⚧️ Gender:</strong> ${req.preferredGender || 'Any'}</div></div>`;
     mapUsersList.appendChild(card);
   });
+}
+
+
+// Auth Functions
+function setAuthStatus(message, isError = false) {
+  const status = document.getElementById('authStatus');
+  const overlayStatus = document.getElementById('authOverlayStatus');
+  if (status) {
+    status.textContent = message;
+    status.style.color = isError ? '#F44336' : 'var(--text-light)';
+  }
+  if (overlayStatus) {
+    overlayStatus.textContent = message;
+    overlayStatus.style.color = isError ? '#F44336' : 'var(--text-light)';
+  }
+}
+
+async function registerUser(fromOverlay = false) {
+  const email = (document.getElementById(fromOverlay ? 'authOverlayEmail' : 'authEmail').value || '').trim();
+  const password = (document.getElementById(fromOverlay ? 'authOverlayPassword' : 'authPassword').value || '').trim();
+  const username = (document.getElementById(fromOverlay ? 'authOverlayUsername' : 'authUsername').value || '').trim();
+
+  if (!email || !password) { setAuthStatus('Email and password required.', true); return; }
+  if (password.length < 8) { setAuthStatus('Password must be at least 8 characters.', true); return; }
+
+  try {
+    setAuthStatus('Registering...');
+    const res = await fetch(`${apiBase}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, username })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setAuthStatus(data.error || 'Registration failed.', true);
+      return;
+    }
+
+    appState.auth = { loggedIn: true, user: data.user };
+    saveAppState();
+    updateAuthDisplay();
+    setAuthStatus(`Registered & logged in as ${data.user.email}`);
+  } catch (e) {
+    console.error('registerUser error:', e);
+    setAuthStatus('Registration error. Check server.', true);
+  }
+}
+
+async function loginUser(fromOverlay = false) {
+  const email = (document.getElementById(fromOverlay ? 'authOverlayEmail' : 'authEmail').value || '').trim();
+  const password = (document.getElementById(fromOverlay ? 'authOverlayPassword' : 'authPassword').value || '').trim();
+
+  if (!email || !password) { setAuthStatus('Email and password required.', true); return; }
+
+  try {
+    setAuthStatus('Logging in...');
+    const res = await fetch(`${apiBase}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setAuthStatus(data.error || 'Login failed.', true);
+      return;
+    }
+
+    appState.auth = { loggedIn: true, user: data.user };
+    saveAppState();
+    updateAuthDisplay();
+    setAuthStatus(`Logged in as ${data.user.email}`);
+  } catch (e) {
+    console.error('loginUser error:', e);
+    setAuthStatus('Login error. Check server.', true);
+  }
+}
+
+function logoutUser() {
+  appState.auth = { loggedIn: false, user: null, guest: false };
+  saveAppState();
+  updateAuthDisplay();
+  const passwordInput = document.getElementById('authPassword');
+  if (passwordInput) { passwordInput.value = ''; }
+  setAuthStatus('Logged out.');
+}
+
+function continueAsGuest() {
+  appState.auth = { loggedIn: false, user: null, guest: true };
+  saveAppState();
+  updateAuthDisplay();
+  setAuthStatus('Guest mode enabled.');
+}
+
+function updateAuthDisplay() {
+  const overlay = document.getElementById('authOverlay');
+  const overlayEmail = document.getElementById('authOverlayEmail');
+  const overlayPassword = document.getElementById('authOverlayPassword');
+  const overlayUsername = document.getElementById('authOverlayUsername');
+  const emailInput = document.getElementById('authEmail');
+  const passwordInput = document.getElementById('authPassword');
+  const usernameInput = document.getElementById('authUsername');
+  const registerBtn = document.getElementById('registerBtn');
+  const loginBtn = document.getElementById('loginBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  if (!emailInput || !passwordInput || !usernameInput || !registerBtn || !loginBtn || !logoutBtn) return;
+
+  const loggedIn = !!(appState.auth && appState.auth.loggedIn);
+  const isGuest = !!(appState.auth && appState.auth.guest);
+  const user = appState.auth ? appState.auth.user : null;
+
+  if (user && user.email) { emailInput.value = user.email; }
+  if (user && user.username) { usernameInput.value = user.username; }
+  if (overlayEmail && user && user.email) { overlayEmail.value = user.email; }
+  if (overlayUsername && user && user.username) { overlayUsername.value = user.username; }
+
+  emailInput.disabled = loggedIn;
+  passwordInput.disabled = loggedIn;
+  usernameInput.disabled = loggedIn;
+
+  if (loggedIn) { passwordInput.value = ''; }
+  if (overlayPassword && loggedIn) { overlayPassword.value = ''; }
+
+  registerBtn.style.display = loggedIn ? 'none' : 'inline-flex';
+  loginBtn.style.display = loggedIn ? 'none' : 'inline-flex';
+  logoutBtn.style.display = loggedIn ? 'inline-flex' : 'none';
+
+  if (loggedIn && user && user.email) {
+    setAuthStatus(`Logged in as ${user.email}`);
+  } else if (!loggedIn && isGuest) {
+    setAuthStatus('Guest mode enabled.');
+  } else if (!loggedIn) {
+    setAuthStatus('Not logged in');
+  }
+
+  if (overlay) {
+    overlay.classList.toggle('active', !loggedIn && !isGuest);
+  }
 }
 
 
