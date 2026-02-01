@@ -376,7 +376,7 @@
   <div class="header">
     <div class="nav-wrapper"><button class="nav-btn" onclick="prevTab()">←</button><button class="nav-btn" onclick="nextTab()">→</button><button class="theme-toggle" onclick="toggleTheme()">🌙</button></div>
     <div class="header-center"><div class="header-title">🎵 Music ConnectZ v6.5 bi K-Oth</div><div class="header-subtitle">Location-Based Collaboration • 2/1/2026</div></div>
-    <div class="header-right"><div class="balance" onclick="switchTab('money')">💰 $<span id="balanceAmount">0.00</span></div><div class="profile-pic" onclick="switchTab('profile')" id="headerPic">👤</div></div>
+    <div class="header-right"><button class="btn btn-small" id="headerLoginBtn" onclick="openLoginOverlay()">🔓 Login</button><div class="balance" onclick="switchTab('money')">💰 $<span id="balanceAmount">0.00</span></div><div class="profile-pic" onclick="switchTab('profile')" id="headerPic">👤</div></div>
   </div>
 
   <div class="tabs">
@@ -2472,6 +2472,13 @@ function continueAsGuest() {
   setAuthStatus('Guest mode enabled.');
 }
 
+function openLoginOverlay() {
+  appState.auth = { loggedIn: false, user: null, guest: false };
+  saveAppState();
+  updateAuthDisplay();
+  setAuthStatus('Enter your email and password to login.');
+}
+
 function showPhoneLogin() {
   document.getElementById('authMainView').style.display = 'none';
   document.getElementById('authPhoneView').style.display = 'block';
@@ -2661,6 +2668,7 @@ function updateAuthDisplay() {
   const registerBtn = document.getElementById('registerBtn');
   const loginBtn = document.getElementById('loginBtn');
   const logoutBtn = document.getElementById('logoutBtn');
+  const headerLoginBtn = document.getElementById('headerLoginBtn');
 
   if (!emailInput || !passwordInput || !usernameInput || !registerBtn || !loginBtn || !logoutBtn) return;
 
@@ -2683,6 +2691,7 @@ function updateAuthDisplay() {
   registerBtn.style.display = loggedIn ? 'none' : 'inline-flex';
   loginBtn.style.display = loggedIn ? 'none' : 'inline-flex';
   logoutBtn.style.display = loggedIn ? 'inline-flex' : 'none';
+  if (headerLoginBtn) { headerLoginBtn.style.display = loggedIn ? 'none' : 'inline-flex'; }
 
   if (loggedIn && user && user.email) {
     setAuthStatus(`Logged in as ${user.email}`);
