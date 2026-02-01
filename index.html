@@ -612,6 +612,12 @@
           </div>
         </div>
       </div>
+      <div class="card">
+        <div class="card-header">📜 Transaction History</div>
+        <div id="transactionHistory" style="font-size: 11px; max-height: 300px; overflow-y: auto;">
+          <div style="color: var(--text-light); text-align: center; padding: 20px;">No transactions yet</div>
+        </div>
+      </div>
     </div>
 
     <div id="settings" class="tab">
@@ -1587,7 +1593,35 @@ function uploadExample() {
   }
   const reader = new FileReader();
   reader.onload = (e) => {
-    const example = { id: Date.now(), title: title, desc: desc, genre: appState.selectedGenre, media: e.target.result, mediaName: mediaFile.name, mediaType: mediaFile.type, skills: [...appState.skillsUsed], privacy: appState.examplePrivacy, image: null, timestamp: new Date().toLocaleString(), userName: appState.user.name || 'Anonymous', userPic: appState.user.profilePic || null, userLocation: appState.user.location || 'Unknown' };
+    // Calculate skill prices (get prices from personas skills)
+    const skillPrices = {};
+    appState.skillsUsed.forEach(skill => {
+      const persona = appState.personas.find(p => p.skills && p.skills.some(s => s.name === skill));
+      if (persona && persona.skills) {
+        const skillObj = persona.skills.find(s => s.name === skill);
+        if (skillObj && skillObj.price) {
+          skillPrices[skill] = parseFloat(skillObj.price);
+        }
+      }
+    });
+    
+    const example = { 
+      id: Date.now(), 
+      title: title, 
+      desc: desc, 
+      genre: appState.selectedGenre, 
+      media: e.target.result, 
+      mediaName: mediaFile.name, 
+      mediaType: mediaFile.type, 
+      skills: [...appState.skillsUsed],
+      skillPrices: skillPrices, // Store skill prices
+      privacy: appState.examplePrivacy, 
+      image: null, 
+      timestamp: new Date().toLocaleString(), 
+      userName: appState.user.name || 'Anonymous', 
+      userPic: appState.user.profilePic || null, 
+      userLocation: appState.user.location || 'Unknown' 
+    };
     const imageFile = document.getElementById('exampleImage').files[0];
     if (imageFile) {
       const imgReader = new FileReader();
@@ -1766,6 +1800,87 @@ function formatBudgetRange(budgetRange) {
   return 'Any';
 }
 
+function acceptCollab(collabIdx) {
+  try {
+    const collab = appState.collabs[collabIdx];
+    if (!collab) { alert('❌ Collaboration not found'); return; }
+    if (collab.userName === appState.user.name) { alert('❌ You cannot accept your own collaboration'); return; }
+    
+    // Get the collab poster's example to find highest skill price
+    const exampleTitle = collab.exampleTitle;
+    const posterExample = appState.examples.find(ex => ex.title === exampleTitle);
+    
+    if (!posterExample || !posterExample.skillPrices) { 
+      alert('❌ Could not determine skill pricing for this collaboration'); 
+      return; 
+    }
+    
+    // Find highest skill price from the poster's example
+    const skillPrices = posterExample.skillPrices;
+    const highestSkillPrice = Math.max(...Object.values(skillPrices).filter(price => typeof price === 'number' && price > 0));
+    
+    if (!isFinite(highestSkillPrice)) {
+      alert('❌ Invalid skill pricing information');
+      return;
+    }
+    
+    // The accepting user's cost structure: they need to pay the poster's highest skill price
+    const acceptorPaysToPoster = highestSkillPrice;
+    
+    // The poster needs to pay the accepting user their agreed collab rate (1 unit of their rate)
+    const posterPaysToAcceptor = collab.rate?.amount || 0;
+    
+    // Check if accepting user has enough balance to pay
+    if (appState.wallet.balance < acceptorPaysToPoster) {
+      const needed = (acceptorPaysToPoster - appState.wallet.balance).toFixed(2);
+      alert(`❌ Insufficient balance. You need $${needed} more to accept this collaboration.`);
+      return;
+    }
+    
+    // Initialize transaction history if needed
+    if (!appState.transactions) appState.transactions = [];
+    
+    // Deduct from accepting user's wallet
+    appState.wallet.balance -= acceptorPaysToPoster;
+    
+    // Credit to poster's wallet (find their index in users if multi-user, or just add to the transaction)
+    // For now, store the transaction and note who needs to be credited
+    const transaction = {
+      id: Date.now(),
+      type: 'collab_acceptance',
+      date: new Date().toLocaleString(),
+      amount: acceptorPaysToPoster,
+      payee: collab.userName,
+      description: `Accepted collab: ${collab.exampleTitle}`,
+      collabId: collab.id,
+      posterPayment: posterPaysToAcceptor,
+      posterPaymentDesc: `Payment from ${collab.userName} for your collaboration`
+    };
+    
+    appState.transactions.push(transaction);
+    
+    // Mark collab as accepted
+    if (!collab.acceptedBy) collab.acceptedBy = [];
+    collab.acceptedBy.push({
+      userName: appState.user.name,
+      acceptedDate: new Date().toLocaleString(),
+      amountPaid: acceptorPaysToPoster,
+      amountToReceive: posterPaysToAcceptor
+    });
+    
+    updateWalletDisplay();
+    renderCollabFeed();
+    saveAppState();
+    
+    alert(`✅ Collaboration accepted! 
+💰 You paid: $${acceptorPaysToPoster.toFixed(2)} to ${collab.userName}
+💸 ${collab.userName} will pay: $${posterPaysToAcceptor.toFixed(2)} to you`);
+  } catch (e) {
+    console.error('acceptCollab error:', e);
+    alert('❌ Error accepting collaboration: ' + e.message);
+  }
+}
+
 function renderCollabFeed() {
   try {
     const feed = document.getElementById('collabFeed');
@@ -1787,7 +1902,19 @@ function renderCollabFeed() {
         const card = document.createElement('div');
         card.className = 'post-card';
         const rateInfo = collab.rate ? `<div style="background: var(--accent); color: white; padding: 6px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-bottom: 8px;">💰 Rate: $${collab.rate.amount} ${collab.rate.type === 'per_hour' ? '/hr' : collab.rate.type === 'per_task' ? '/task' : '(fixed)'}</div>` : '';
-        card.innerHTML = `<div class="post-header"><div class="post-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover; background-position: center;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="post-info" style="flex: 1;"><div class="post-user">${collab.personaName}</div><div class="post-meta">by ${collab.userName}</div><div class="post-meta">📍 ${collab.userLocation}</div><div class="post-meta">${collab.timestamp}</div></div></div><div style="margin-bottom: 10px;">${rateInfo}<div style="font-size: 11px; margin-bottom: 6px; font-weight: 600;">Work: ${collab.exampleTitle}</div><div style="font-size: 12px;">${collab.description}</div></div><div class="post-actions"><button class="btn btn-secondary btn-small" onclick="editCollab(${originalIdx})">✏️ Edit</button><button class="btn btn-danger btn-small" onclick="removeCollab(${originalIdx})">🗑️ Delete</button></div>`;
+        const isMyCollab = collab.userName === appState.user.name;
+        
+        // Check if current user already accepted this collab
+        const alreadyAccepted = collab.acceptedBy && collab.acceptedBy.some(a => a.userName === appState.user.name);
+        const acceptBtn = !isMyCollab && !alreadyAccepted ? `<button class="btn btn-success btn-small" onclick="acceptCollab(${originalIdx})" style="flex: 1;">✅ Accept Collab</button>` : '';
+        
+        // Show acceptance info if there are acceptances
+        const acceptanceInfo = collab.acceptedBy && collab.acceptedBy.length > 0 ? 
+          `<div style="background: #d4edda; color: #155724; padding: 8px; border-radius: 4px; font-size: 10px; margin-bottom: 8px; border-left: 3px solid #28a745;">✅ Accepted by: ${collab.acceptedBy.map(a => a.userName).join(', ')}</div>` : '';
+        
+        const alreadyAcceptedMsg = alreadyAccepted ? `<div style="background: #cfe2ff; color: #084298; padding: 8px; border-radius: 4px; font-size: 11px; margin-bottom: 8px;">✔️ You already accepted this collaboration</div>` : '';
+        
+        card.innerHTML = `<div class="post-header"><div class="post-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover; background-position: center;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="post-info" style="flex: 1;"><div class="post-user">${collab.personaName}</div><div class="post-meta">by ${collab.userName}</div><div class="post-meta">📍 ${collab.userLocation}</div><div class="post-meta">${collab.timestamp}</div></div></div><div style="margin-bottom: 10px;">${rateInfo}${acceptanceInfo}${alreadyAcceptedMsg}<div style="font-size: 11px; margin-bottom: 6px; font-weight: 600;">Work: ${collab.exampleTitle}</div><div style="font-size: 12px;">${collab.description}</div></div><div class="post-actions" style="display: flex; gap: 6px; flex-wrap: wrap;">${acceptBtn}<button class="btn btn-secondary btn-small" onclick="editCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>✏️ Edit</button><button class="btn btn-danger btn-small" onclick="removeCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>🗑️ Delete</button></div>`;
         feed.appendChild(card);
       } catch (e) {
         console.error('Error rendering collab card:', e);
@@ -1881,6 +2008,47 @@ function updateWalletDisplay() {
   const netIncome = appState.wallet.balance || 0;
   safeSetText('totalTaxCollected', '$' + taxCollected.toFixed(2));
   safeSetText('netIncome', '$' + netIncome.toFixed(2));
+  
+  // Update transaction history
+  updateTransactionHistoryDisplay();
+}
+
+function updateTransactionHistoryDisplay() {
+  const historyDiv = document.getElementById('transactionHistory');
+  if (!historyDiv) return;
+  
+  const transactions = appState.transactions || [];
+  if (transactions.length === 0) {
+    historyDiv.innerHTML = '<div style="color: var(--text-light); text-align: center; padding: 20px;">No transactions yet</div>';
+    return;
+  }
+  
+  // Sort transactions by date (newest first)
+  const sortedTx = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  let html = '';
+  sortedTx.forEach(tx => {
+    const icon = tx.type === 'collab_acceptance' ? '🤝' : '💰';
+    const isExpense = tx.type === 'collab_acceptance';
+    const color = isExpense ? '#dc3545' : '#28a745';
+    const sign = isExpense ? '-' : '+';
+    
+    html += `
+      <div style="background: var(--bg); padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid ${color};">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>${icon} ${tx.description}</span>
+          <strong style="color: ${color};">${sign}$${tx.amount.toFixed(2)}</strong>
+        </div>
+        <div style="font-size: 9px; color: var(--text-light);">
+          ${tx.payee ? `<div>From/To: ${tx.payee}</div>` : ''}
+          <div>${tx.date}</div>
+          ${tx.posterPayment ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border);">↔️ Pending: ${tx.payee} owes you $${tx.posterPayment.toFixed(2)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  });
+  
+  historyDiv.innerHTML = html;
 }
 
 function updateAllDisplays() {
