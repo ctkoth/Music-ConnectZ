@@ -2413,9 +2413,12 @@ function initializeSettings() {
 window.addEventListener('beforeunload', () => { saveAppState(); });
 window.addEventListener('load', () => { 
   loadAppState();
-  updateAllDisplays();
+  // Defer display updates to avoid blocking the UI
+  setTimeout(() => {
+    updateAllDisplays();
+    switchTab(appState.currentTab || 'setup');
+  }, 50);
   setTimeout(initializeSettings, 100);
-  switchTab(appState.currentTab || 'setup');
 });
 
 document.addEventListener('keydown', (e) => {
