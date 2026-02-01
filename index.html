@@ -645,6 +645,15 @@
             <div class="toggle-slider"></div>
           </div>
         </div>
+        <div class="toggle-setting" style="margin-top: 12px;">
+          <div>
+            <div style="font-weight: 700;">🔄 Match Device Theme</div>
+            <div style="font-size: 11px; color: var(--text-light); margin-top: 2px;">Automatically follow system dark/light mode</div>
+          </div>
+          <div class="toggle-switch" onclick="toggleDeviceThemeMatch()" id="deviceThemeToggle">
+            <div class="toggle-slider"></div>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -938,6 +947,7 @@ function loadAppState() {
       settings: loaded.settings || {
         theme: 'blue',
         darkMode: false,
+        deviceThemeMatch: false,
         language: 'English',
         emailNotifications: true,
         pushNotifications: true,
@@ -948,9 +958,14 @@ function loadAppState() {
     };
   }
   if (appState.user.rating === undefined) { appState.user.rating = null; }
-  if (appState.settings.darkMode) {
+  
+  // Apply device theme or saved theme
+  if (appState.settings.deviceThemeMatch) {
+    applyDeviceTheme();
+  } else if (appState.settings.darkMode) {
     document.documentElement.setAttribute('data-theme', 'dark');
   }
+  
   updateAllDisplays();
 }
 
@@ -1836,6 +1851,12 @@ function updateAllDisplays() {
   safeSetValue('location', appState.user.location);
   safeSetValue('bio', appState.user.bio);
   updateAuthDisplay();
+  
+  // Update theme toggles
+  const darkModeToggle = document.getElementById('darkModeToggle');
+  const deviceThemeToggle = document.getElementById('deviceThemeToggle');
+  if (darkModeToggle) darkModeToggle.classList.toggle('on', appState.settings.darkMode);
+  if (deviceThemeToggle) deviceThemeToggle.classList.toggle('on', appState.settings.deviceThemeMatch);
 }
 
 function toggleTheme() {
@@ -2278,12 +2299,52 @@ function toggleDarkMode() {
   const html = document.documentElement;
   const isDark = appState.settings.darkMode;
   appState.settings.darkMode = !isDark;
+  appState.settings.deviceThemeMatch = false; // Disable device matching when manually toggling
   html.setAttribute('data-theme', !isDark ? 'dark' : 'light');
   updateThemeButton(!isDark ? 'dark' : 'light');
   const toggle = document.getElementById('darkModeToggle');
   toggle.classList.toggle('on');
+  const deviceToggle = document.getElementById('deviceThemeToggle');
+  if (deviceToggle) deviceToggle.classList.remove('on');
   saveAppState();
 }
+
+function toggleDeviceThemeMatch() {
+  appState.settings.deviceThemeMatch = !appState.settings.deviceThemeMatch;
+  const toggle = document.getElementById('deviceThemeToggle');
+  toggle.classList.toggle('on');
+  
+  if (appState.settings.deviceThemeMatch) {
+    applyDeviceTheme();
+  }
+  saveAppState();
+}
+
+function applyDeviceTheme() {
+  const html = document.documentElement;
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  appState.settings.darkMode = prefersDark;
+  html.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+  updateThemeButton(prefersDark ? 'dark' : 'light');
+  
+  const darkToggle = document.getElementById('darkModeToggle');
+  const deviceToggle = document.getElementById('deviceThemeToggle');
+  if (darkToggle) darkToggle.classList.toggle('on', prefersDark);
+  if (deviceToggle) deviceToggle.classList.add('on');
+}
+
+// Listen for system theme changes
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  if (appState.settings && appState.settings.deviceThemeMatch) {
+    const isDark = e.matches;
+    appState.settings.darkMode = isDark;
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    updateThemeButton(isDark ? 'dark' : 'light');
+    const darkToggle = document.getElementById('darkModeToggle');
+    if (darkToggle) darkToggle.classList.toggle('on', isDark);
+    saveAppState();
+  }
+});
 
 function toggleNotification(type) {
   if (type === 'email') {
