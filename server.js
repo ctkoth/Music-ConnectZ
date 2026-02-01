@@ -615,6 +615,11 @@ app.get('/cancel', (req, res) => {
 });
 
 // OAuth Routes
+app.get('/api/auth/google/available', (req, res) => {
+  const enabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  res.json({ enabled });
+});
+
 app.get('/api/auth/google', (req, res, next) => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     return res.status(501).json({ error: 'Google login is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.' });

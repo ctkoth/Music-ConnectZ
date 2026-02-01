@@ -2645,7 +2645,22 @@ async function completePasswordReset() {
   }
 }
 
-function socialLogin(provider) {
+async function socialLogin(provider) {
+  // Check availability for Google login
+  if (provider === 'google') {
+    try {
+      const res = await fetch(`${apiBase}/api/auth/google/available`);
+      const data = await res.json().catch(() => ({}));
+      if (!data.enabled) {
+        setAuthStatus('Google login is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.', true);
+        return;
+      }
+    } catch (e) {
+      setAuthStatus('Google login check failed. Check server.', true);
+      return;
+    }
+  }
+
   // Open OAuth flow in popup window
   const width = 600;
   const height = 700;
