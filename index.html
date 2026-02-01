@@ -457,11 +457,17 @@
         <div class="card-header">🤝 Post Collaboration Request</div>
         <input type="hidden" id="editingCollabIdx" value="" />
         <div class="form-group"><label>🎭 Select Persona *</label><select id="collabPersona" onchange="updateCollabExampleOptions()"><option value="">Choose persona</option></select></div>
-        <div class="form-group"><label>🎵 Select Public Example *</label><select id="collabPublicExample"><option value="">Choose example</option></select></div>
+        <div class="form-group"><label>🎵 Select Public Example *</label><select id="collabPublicExample" onchange="updateSkillRates()"><option value="">Choose example</option></select></div>
         <div class="form-group"><label>📝 Description (200 chars) *</label><textarea id="collabPostDesc" placeholder="What collaboration are you looking for?" style="height: 60px;" maxlength="200"></textarea></div>
         <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);"><div style="font-weight: 600; font-size: 12px; margin-bottom: 10px; color: var(--primary);">💰 Your Rates (for this collab)</div>
           <div class="grid-2"><div class="form-group"><label>💵 Rate Type *</label><select id="collabRateType"><option value="">Select type</option><option value="per_hour">Per Hour ($)</option><option value="per_task">Per Task/Work ($)</option><option value="fixed">Fixed Total ($)</option></select></div><div class="form-group"><label>💰 Amount ($) *</label><input type="number" id="collabRateAmount" min="0" step="0.01" placeholder="25.00" /></div></div>
           <div style="font-size: 10px; color: var(--text-light);">You'll be paid this rate. Other collaborators set their own rates.</div>
+        </div>
+        <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);"><div style="font-weight: 600; font-size: 12px; margin-bottom: 10px; color: var(--primary);">🎯 Skill-Specific Rates (for collaborators)</div>
+          <div style="font-size: 10px; color: var(--text-light); margin-bottom: 10px;">Set rates for collaborators to use these skills. Can be per hour or per work.</div>
+          <div id="skillRatesContainer" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="text-align: center; color: var(--text-light); font-size: 11px; padding: 20px;">Select an example above to see available skills</div>
+          </div>
         </div>
         <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);"><div style="font-weight: 600; font-size: 12px; margin-bottom: 10px; color: var(--primary);">🎯 Collaborator Requirements</div>
           <div class="grid-2"><div class="form-group"><label>👥 Min Age</label><input type="number" id="collabMinAge" min="13" max="120" placeholder="13" /></div><div class="form-group"><label>👥 Max Age</label><input type="number" id="collabMaxAge" min="13" max="120" placeholder="120" /></div></div>
@@ -1717,6 +1723,41 @@ function updateCollabExampleOptions() {
     }));
     publicExamples.forEach((ex, idx) => { exampleSelect.innerHTML += `<option value="${idx}">${ex.title}</option>`; });
   }
+  // Clear skill rates when changing example
+  updateSkillRates();
+}
+
+function updateSkillRates() {
+  const exampleIdx = document.getElementById('collabPublicExample').value;
+  const container = document.getElementById('skillRatesContainer');
+  
+  if (!exampleIdx || exampleIdx === '') {
+    container.innerHTML = '<div style="text-align: center; color: var(--text-light); font-size: 11px; padding: 20px;">Select an example above to see available skills</div>';
+    return;
+  }
+  
+  const example = appState.examples[parseInt(exampleIdx)];
+  if (!example || !example.skills || example.skills.length === 0) {
+    container.innerHTML = '<div style="text-align: center; color: var(--text-light); font-size: 11px; padding: 20px;">No skills available for this example</div>';
+    return;
+  }
+  
+  // Create rate input fields for each skill
+  container.innerHTML = example.skills.map((skill, idx) => `
+    <div style="border: 1px solid var(--border); padding: 10px; border-radius: 6px; background: var(--input-bg);">
+      <div style="font-weight: 600; font-size: 11px; margin-bottom: 8px;">🎯 ${skill}</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label style="font-size: 10px;">💵 Per Hour ($)</label>
+          <input type="number" id="skillRate_${idx}_hour" min="0" step="0.01" placeholder="50" />
+        </div>
+        <div class="form-group">
+          <label style="font-size: 10px;">📦 Per Work ($)</label>
+          <input type="number" id="skillRate_${idx}_work" min="0" step="0.01" placeholder="150" />
+        </div>
+      </div>
+    </div>
+  `).join('');
 }
 
 function postCollabRequest() {
@@ -1744,6 +1785,22 @@ function postCollabRequest() {
   if (minAge > maxAge) { alert('❌ Minimum age cannot be greater than maximum age'); return; }
   if (budgetMin !== null && budgetMax !== null && budgetMin > budgetMax) { alert('❌ Budget min cannot exceed budget max'); return; }
   
+  // Collect skill rates
+  const example = appState.examples[parseInt(exampleIdx)];
+  const skillRates = {};
+  if (example && example.skills) {
+    example.skills.forEach((skill, idx) => {
+      const perHour = parseFloat(document.getElementById(`skillRate_${idx}_hour`).value);
+      const perWork = parseFloat(document.getElementById(`skillRate_${idx}_work`).value);
+      if (!isNaN(perHour) || !isNaN(perWork)) {
+        skillRates[skill] = {
+          perHour: isNaN(perHour) ? null : perHour,
+          perWork: isNaN(perWork) ? null : perWork
+        };
+      }
+    });
+  }
+  
   const budgetRange = (budgetMin !== null || budgetMax !== null) ? { min: budgetMin, max: budgetMax } : null;
   const collab = { 
     id: Date.now(), 
@@ -1758,6 +1815,7 @@ function postCollabRequest() {
     userLng: appState.user.lng || null, 
     timestamp: new Date().toLocaleString(),
     rate: { type: rateType, amount: rateAmount },
+    skillRates: skillRates,
     requirements: { ageRange: {min: minAge, max: maxAge}, maxDistance: maxDist, budgetRange: budgetRange, minExperience: minExp, minProfileRating: minProfileRating, minPictureRating: minPictureRating, preferredGender: prefGender }, 
     ratings: [], 
     comments: [] 
@@ -1806,28 +1864,30 @@ function acceptCollab(collabIdx) {
     if (!collab) { alert('❌ Collaboration not found'); return; }
     if (collab.userName === appState.user.name) { alert('❌ You cannot accept your own collaboration'); return; }
     
-    // Get the collab poster's example to find highest skill price
-    const exampleTitle = collab.exampleTitle;
-    const posterExample = appState.examples.find(ex => ex.title === exampleTitle);
-    
-    if (!posterExample || !posterExample.skillPrices) { 
-      alert('❌ Could not determine skill pricing for this collaboration'); 
-      return; 
-    }
-    
-    // Find highest skill price from the poster's example
-    const skillPrices = posterExample.skillPrices;
-    const highestSkillPrice = Math.max(...Object.values(skillPrices).filter(price => typeof price === 'number' && price > 0));
-    
-    if (!isFinite(highestSkillPrice)) {
-      alert('❌ Invalid skill pricing information');
+    // Get the agreed skill rates from the collab
+    if (!collab.skillRates || Object.keys(collab.skillRates).length === 0) {
+      alert('❌ No skill rates set for this collaboration');
       return;
     }
     
-    // The accepting user's cost structure: they need to pay the poster's highest skill price
-    const acceptorPaysToPoster = highestSkillPrice;
+    // Calculate cost based on average of skill rates (poster's pricing)
+    // User can choose to pay per hour or per work
+    let skillRateValues = [];
+    Object.values(collab.skillRates).forEach(rate => {
+      if (rate.perWork) skillRateValues.push(rate.perWork);
+      else if (rate.perHour) skillRateValues.push(rate.perHour);
+    });
     
-    // The poster needs to pay the accepting user their agreed collab rate (1 unit of their rate)
+    if (skillRateValues.length === 0) {
+      alert('❌ No valid skill rates available');
+      return;
+    }
+    
+    // Use the maximum per-work rate or per-hour rate from the collab
+    const maxSkillRate = Math.max(...skillRateValues);
+    const acceptorPaysToPoster = maxSkillRate;
+    
+    // The poster gets paid their agreed collab rate (1 unit of their rate)
     const posterPaysToAcceptor = collab.rate?.amount || 0;
     
     // Check if accepting user has enough balance to pay
@@ -1843,8 +1903,7 @@ function acceptCollab(collabIdx) {
     // Deduct from accepting user's wallet
     appState.wallet.balance -= acceptorPaysToPoster;
     
-    // Credit to poster's wallet (find their index in users if multi-user, or just add to the transaction)
-    // For now, store the transaction and note who needs to be credited
+    // Store the transaction
     const transaction = {
       id: Date.now(),
       type: 'collab_acceptance',
@@ -1853,6 +1912,7 @@ function acceptCollab(collabIdx) {
       payee: collab.userName,
       description: `Accepted collab: ${collab.exampleTitle}`,
       collabId: collab.id,
+      skillRates: collab.skillRates,
       posterPayment: posterPaysToAcceptor,
       posterPaymentDesc: `Payment from ${collab.userName} for your collaboration`
     };
@@ -1901,7 +1961,19 @@ function renderCollabFeed() {
         const originalIdx = appState.collabs.findIndex(c => c.id === collab.id);
         const card = document.createElement('div');
         card.className = 'post-card';
-        const rateInfo = collab.rate ? `<div style="background: var(--accent); color: white; padding: 6px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-bottom: 8px;">💰 Rate: $${collab.rate.amount} ${collab.rate.type === 'per_hour' ? '/hr' : collab.rate.type === 'per_task' ? '/task' : '(fixed)'}</div>` : '';
+        const rateInfo = collab.rate ? `<div style="background: var(--accent); color: white; padding: 6px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-bottom: 8px;">💰 Your Collab Rate: $${collab.rate.amount} ${collab.rate.type === 'per_hour' ? '/hr' : collab.rate.type === 'per_task' ? '/task' : '(fixed)'}</div>` : '';
+        
+        // Build skill rates display
+        let skillRatesDisplay = '';
+        if (collab.skillRates && Object.keys(collab.skillRates).length > 0) {
+          const skillRatesHTML = Object.entries(collab.skillRates).map(([skill, rates]) => {
+            const perHourStr = rates.perHour ? `${rates.perHour}/hr` : '—';
+            const perWorkStr = rates.perWork ? `${rates.perWork}/work` : '—';
+            return `<div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border);"><span style="font-weight: 600;">🎯 ${skill}:</span><span>💵 $${perHourStr} | 📦 $${perWorkStr}</span></div>`;
+          }).join('');
+          skillRatesDisplay = `<div style="background: var(--bg); padding: 8px; border-radius: 4px; font-size: 10px; margin-bottom: 8px; border-left: 3px solid var(--accent);">${skillRatesHTML}</div>`;
+        }
+        
         const isMyCollab = collab.userName === appState.user.name;
         
         // Check if current user already accepted this collab
@@ -1914,7 +1986,7 @@ function renderCollabFeed() {
         
         const alreadyAcceptedMsg = alreadyAccepted ? `<div style="background: #cfe2ff; color: #084298; padding: 8px; border-radius: 4px; font-size: 11px; margin-bottom: 8px;">✔️ You already accepted this collaboration</div>` : '';
         
-        card.innerHTML = `<div class="post-header"><div class="post-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover; background-position: center;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="post-info" style="flex: 1;"><div class="post-user">${collab.personaName}</div><div class="post-meta">by ${collab.userName}</div><div class="post-meta">📍 ${collab.userLocation}</div><div class="post-meta">${collab.timestamp}</div></div></div><div style="margin-bottom: 10px;">${rateInfo}${acceptanceInfo}${alreadyAcceptedMsg}<div style="font-size: 11px; margin-bottom: 6px; font-weight: 600;">Work: ${collab.exampleTitle}</div><div style="font-size: 12px;">${collab.description}</div></div><div class="post-actions" style="display: flex; gap: 6px; flex-wrap: wrap;">${acceptBtn}<button class="btn btn-secondary btn-small" onclick="editCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>✏️ Edit</button><button class="btn btn-danger btn-small" onclick="removeCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>🗑️ Delete</button></div>`;
+        card.innerHTML = `<div class="post-header"><div class="post-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover; background-position: center;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="post-info" style="flex: 1;"><div class="post-user">${collab.personaName}</div><div class="post-meta">by ${collab.userName}</div><div class="post-meta">📍 ${collab.userLocation}</div><div class="post-meta">${collab.timestamp}</div></div></div><div style="margin-bottom: 10px;">${rateInfo}${skillRatesDisplay}${acceptanceInfo}${alreadyAcceptedMsg}<div style="font-size: 11px; margin-bottom: 6px; font-weight: 600;">Work: ${collab.exampleTitle}</div><div style="font-size: 12px;">${collab.description}</div></div><div class="post-actions" style="display: flex; gap: 6px; flex-wrap: wrap;">${acceptBtn}<button class="btn btn-secondary btn-small" onclick="editCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>✏️ Edit</button><button class="btn btn-danger btn-small" onclick="removeCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>🗑️ Delete</button></div>`;
         feed.appendChild(card);
       } catch (e) {
         console.error('Error rendering collab card:', e);
@@ -1937,6 +2009,18 @@ function editCollab(idx) {
     document.getElementById('collabRateType').value = collab.rate.type;
     document.getElementById('collabRateAmount').value = collab.rate.amount;
   }
+  
+  // Restore skill rates after a short delay to ensure skill rates are populated
+  setTimeout(() => {
+    if (collab.skillRates) {
+      Object.entries(collab.skillRates).forEach(([skill, rates], idx) => {
+        const hourInput = document.getElementById(`skillRate_${idx}_hour`);
+        const workInput = document.getElementById(`skillRate_${idx}_work`);
+        if (hourInput && rates.perHour) hourInput.value = rates.perHour;
+        if (workInput && rates.perWork) workInput.value = rates.perWork;
+      });
+    }
+  }, 100);
   
   const req = collab.requirements || {};
   const br = req.budgetRange || null;
