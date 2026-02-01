@@ -1005,22 +1005,34 @@ function loadProfilePic(event) {
 }
 
 function reverseGeocode(lat, lng, callback) {
-  const geocoder = new google.maps.Geocoder();
-  const latlng = { lat: lat, lng: lng };
-  geocoder.geocode({ location: latlng }, (results, status) => {
-    if (status === 'OK' && results[0]) {
-      const components = {};
-      results[0].address_components.forEach(comp => {
-        if (comp.types.includes('locality')) components.city = comp.long_name;
-        if (comp.types.includes('administrative_area_level_1')) components.state = comp.short_name;
-        if (comp.types.includes('country')) components.country = comp.short_name;
-      });
-      const cityStateCountry = `${components.city || 'Unknown'}, ${components.state || 'Unknown'}, ${components.country || 'Unknown'}`;
-      callback(cityStateCountry);
-    } else {
-      callback('Unknown Location');
+  try {
+    if (typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) {
+      reverseGeocodeFallback(lat, lng, callback);
+      return;
     }
-  });
+    const geocoder = new google.maps.Geocoder();
+    const latlng = { lat: lat, lng: lng };
+    geocoder.geocode({ location: latlng }, (results, status) => {
+      try {
+        if (status === 'OK' && results[0]) {
+          const components = {};
+          results[0].address_components.forEach(comp => {
+            if (comp.types.includes('locality')) components.city = comp.long_name;
+            if (comp.types.includes('administrative_area_level_1')) components.state = comp.short_name;
+            if (comp.types.includes('country')) components.country = comp.short_name;
+          });
+          const cityStateCountry = `${components.city || 'Unknown'}, ${components.state || 'Unknown'}, ${components.country || 'Unknown'}`;
+          callback(cityStateCountry);
+        } else {
+          reverseGeocodeFallback(lat, lng, callback);
+        }
+      } catch (e) {
+        reverseGeocodeFallback(lat, lng, callback);
+      }
+    });
+  } catch (e) {
+    reverseGeocodeFallback(lat, lng, callback);
+  }
 }
 
 function calculateExperienceYears(startDateStr) {
@@ -1266,24 +1278,38 @@ function renderPersonasDisplay() {
 
 function removePersona(idx) { if (confirm('Remove this persona and all its skills?')) { appState.personas.splice(idx, 1); renderPersonasDisplay(); saveAppState(); } }
 
-function removePersonaSkill(personaIdx, skillIdx) { appState.personas[personaIdx].skills.splice(skillIdx, 1); renderPersonasDisplay(); saveAppState(); }
+function removePersonaSkill(personaIdx, skillIdx) { 
+  try {
+    if (appState.personas[personaIdx] && appState.personas[personaIdx].skills) {
+      appState.personas[personaIdx].skills.splice(skillIdx, 1); 
+      renderPersonasDisplay(); 
+      saveAppState(); 
+    }
+  } catch (e) {
+    console.error('removePersonaSkill error:', e);
+  }
+}
 
 function openEditSkillModal(personaIdx, skillIdx) {
-  const skill = appState.personas[personaIdx].skills[skillIdx];
-  const [month, day, year] = skill.startDate.split('/');
-  
-  document.getElementById('editingPersonaIdxForSkill').value = personaIdx;
-  document.getElementById('editingSkillIdx').value = skillIdx;
-  document.getElementById('editSkillName').value = skill.name;
-  document.getElementById('editSkillMo').value = month;
-  document.getElementById('editSkillDay').value = day;
-  document.getElementById('editSkillYr').value = year;
-  document.getElementById('editSkillPricePerWork').value = skill.pricePerWork || '';
-  document.getElementById('editSkillPricePerHour').value = skill.pricePerHour || '';
-  
-  // Populate date select options
-  populateEditDateSelects();
-  document.getElementById('editSkillModal').classList.add('active');
+  try {
+    const skill = appState.personas[personaIdx].skills[skillIdx];
+    const [month, day, year] = skill.startDate.split('/');
+    
+    document.getElementById('editingPersonaIdxForSkill').value = personaIdx;
+    document.getElementById('editingSkillIdx').value = skillIdx;
+    document.getElementById('editSkillName').value = skill.name;
+    document.getElementById('editSkillMo').value = month;
+    document.getElementById('editSkillDay').value = day;
+    document.getElementById('editSkillYr').value = year;
+    document.getElementById('editSkillPricePerWork').value = skill.pricePerWork || '';
+    document.getElementById('editSkillPricePerHour').value = skill.pricePerHour || '';
+    
+    // Populate date select options
+    populateEditDateSelects();
+    document.getElementById('editSkillModal').classList.add('active');
+  } catch (e) {
+    console.error('openEditSkillModal error:', e);
+  }
 }
 
 function populateEditDateSelects() {
@@ -1762,11 +1788,25 @@ function copyEmail() {
 function initMap() {
   const mapContainer = document.getElementById('collabMap');
   if (!mapContainer) return;
+  try {
+    if (typeof google === 'undefined' || !google.maps || !google.maps.Map) {
+      mapContainer.innerHTML = '<div style="padding:10px; color: var(--text-light); text-align:center;">Map unavailable</div>';
+      return;
+    }
+  } catch (e) {
+    mapContainer.innerHTML = '<div style="padding:10px; color: var(--text-light); text-align:center;">Map error</div>';
+    return;
+  }
   const userLat = appState.user.lat || 40.7128;
   const userLng = appState.user.lng || -74.0060;
   const mapOptions = { zoom: 12, center: { lat: userLat, lng: userLng }, mapTypeControl: false };
   
-  appState.map = new google.maps.Map(mapContainer, mapOptions);
+  try {
+    appState.map = new google.maps.Map(mapContainer, mapOptions);
+  } catch (e) {
+    console.error('Map init error:', e);
+    mapContainer.innerHTML = '<div style="padding:10px; color: var(--text-light); text-align:center;">Map failed to load</div>';
+  }
   
   // Add user's location marker
   new google.maps.Marker({
