@@ -459,6 +459,10 @@
         <div class="form-group"><label>🎭 Select Persona *</label><select id="collabPersona" onchange="updateCollabExampleOptions()"><option value="">Choose persona</option></select></div>
         <div class="form-group"><label>🎵 Select Public Example *</label><select id="collabPublicExample"><option value="">Choose example</option></select></div>
         <div class="form-group"><label>📝 Description (200 chars) *</label><textarea id="collabPostDesc" placeholder="What collaboration are you looking for?" style="height: 60px;" maxlength="200"></textarea></div>
+        <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);"><div style="font-weight: 600; font-size: 12px; margin-bottom: 10px; color: var(--primary);">💰 Your Rates (for this collab)</div>
+          <div class="grid-2"><div class="form-group"><label>💵 Rate Type *</label><select id="collabRateType"><option value="">Select type</option><option value="per_hour">Per Hour ($)</option><option value="per_task">Per Task/Work ($)</option><option value="fixed">Fixed Total ($)</option></select></div><div class="form-group"><label>💰 Amount ($) *</label><input type="number" id="collabRateAmount" min="0" step="0.01" placeholder="25.00" /></div></div>
+          <div style="font-size: 10px; color: var(--text-light);">You'll be paid this rate. Other collaborators set their own rates.</div>
+        </div>
         <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);"><div style="font-weight: 600; font-size: 12px; margin-bottom: 10px; color: var(--primary);">🎯 Collaborator Requirements</div>
           <div class="grid-2"><div class="form-group"><label>👥 Min Age</label><input type="number" id="collabMinAge" min="13" max="120" placeholder="13" /></div><div class="form-group"><label>👥 Max Age</label><input type="number" id="collabMaxAge" min="13" max="120" placeholder="120" /></div></div>
           <div class="grid-2"><div class="form-group"><label>📍 Max Distance (miles)</label><input type="number" id="collabMaxDistance" min="0" placeholder="Unlimited" /></div><div class="form-group"><label>💵 Budget per Collab ($ range)</label><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;"><input type="number" id="collabBudgetMin" min="0" step="0.01" placeholder="Min" /><input type="number" id="collabBudgetMax" min="0" step="0.01" placeholder="Max" /></div><div style="font-size: 10px; color: var(--text-light); margin-top: 4px;">Leave blank for no min/max.</div></div></div>
@@ -1685,7 +1689,12 @@ function postCollabRequest() {
   const personaIdx = document.getElementById('collabPersona').value;
   const exampleIdx = document.getElementById('collabPublicExample').value;
   const desc = document.getElementById('collabPostDesc').value.trim();
+  const rateType = document.getElementById('collabRateType').value;
+  const rateAmount = parseFloat(document.getElementById('collabRateAmount').value);
+  
   if (!personaIdx || !exampleIdx || !desc) { alert('❌ Please fill all fields'); return; }
+  if (!rateType || !rateAmount || rateAmount <= 0) { alert('❌ Please set your rate (type and amount)'); return; }
+  
   const minAge = parseInt(document.getElementById('collabMinAge').value) || 13;
   const maxAge = parseInt(document.getElementById('collabMaxAge').value) || 120;
   const maxDist = parseFloat(document.getElementById('collabMaxDistance').value) || null;
@@ -1697,15 +1706,37 @@ function postCollabRequest() {
   const minProfileRating = parseFloat(document.getElementById('collabMinProfileRating').value) || 0;
   const minPictureRating = parseFloat(document.getElementById('collabMinPictureRating').value) || 0;
   const prefGender = document.getElementById('collabPreferredGender').value || '';
+  
   if (minAge > maxAge) { alert('❌ Minimum age cannot be greater than maximum age'); return; }
   if (budgetMin !== null && budgetMax !== null && budgetMin > budgetMax) { alert('❌ Budget min cannot exceed budget max'); return; }
+  
   const budgetRange = (budgetMin !== null || budgetMax !== null) ? { min: budgetMin, max: budgetMax } : null;
-  const collab = { id: Date.now(), personaIdx: parseInt(personaIdx), personaName: appState.personas[parseInt(personaIdx)].name, exampleTitle: appState.examples[parseInt(exampleIdx)].title, description: desc, userName: appState.user.name || 'Anonymous', userLocation: appState.user.location || 'Unknown', userPic: appState.user.profilePic || null, userLat: appState.user.lat || null, userLng: appState.user.lng || null, timestamp: new Date().toLocaleString(), requirements: { ageRange: {min: minAge, max: maxAge}, maxDistance: maxDist, budgetRange: budgetRange, minExperience: minExp, minProfileRating: minProfileRating, minPictureRating: minPictureRating, preferredGender: prefGender }, ratings: [], comments: [] };
+  const collab = { 
+    id: Date.now(), 
+    personaIdx: parseInt(personaIdx), 
+    personaName: appState.personas[parseInt(personaIdx)].name, 
+    exampleTitle: appState.examples[parseInt(exampleIdx)].title, 
+    description: desc, 
+    userName: appState.user.name || 'Anonymous', 
+    userLocation: appState.user.location || 'Unknown', 
+    userPic: appState.user.profilePic || null, 
+    userLat: appState.user.lat || null, 
+    userLng: appState.user.lng || null, 
+    timestamp: new Date().toLocaleString(),
+    rate: { type: rateType, amount: rateAmount },
+    requirements: { ageRange: {min: minAge, max: maxAge}, maxDistance: maxDist, budgetRange: budgetRange, minExperience: minExp, minProfileRating: minProfileRating, minPictureRating: minPictureRating, preferredGender: prefGender }, 
+    ratings: [], 
+    comments: [] 
+  };
+  
   const editIdx = document.getElementById('editingCollabIdx').value;
   if (editIdx) { appState.collabs[parseInt(editIdx)] = collab; alert('✓ Collab request updated!'); } else { appState.collabs.push(collab); alert('✓ Collab request posted!'); }
+  
   document.getElementById('collabPersona').value = '';
   document.getElementById('collabPublicExample').value = '';
   document.getElementById('collabPostDesc').value = '';
+  document.getElementById('collabRateType').value = '';
+  document.getElementById('collabRateAmount').value = '';
   document.getElementById('collabMinAge').value = '';
   document.getElementById('collabMaxAge').value = '';
   document.getElementById('collabMaxDistance').value = '';
@@ -1715,6 +1746,7 @@ function postCollabRequest() {
   document.getElementById('collabMinProfileRating').value = '';
   document.getElementById('collabMinPictureRating').value = '';
   document.getElementById('collabPreferredGender').value = '';
+  
   cancelEditCollab();
   renderCollabFeed();
   saveAppState();
@@ -1754,7 +1786,8 @@ function renderCollabFeed() {
         const originalIdx = appState.collabs.findIndex(c => c.id === collab.id);
         const card = document.createElement('div');
         card.className = 'post-card';
-        card.innerHTML = `<div class="post-header"><div class="post-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover; background-position: center;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="post-info" style="flex: 1;"><div class="post-user">${collab.personaName}</div><div class="post-meta">by ${collab.userName}</div><div class="post-meta">📍 ${collab.userLocation}</div><div class="post-meta">${collab.timestamp}</div></div></div><div style="margin-bottom: 10px;"><div style="font-size: 11px; margin-bottom: 6px; font-weight: 600;">Work: ${collab.exampleTitle}</div><div style="font-size: 12px;">${collab.description}</div></div><div class="post-actions"><button class="btn btn-secondary btn-small" onclick="editCollab(${originalIdx})">✏️ Edit</button><button class="btn btn-danger btn-small" onclick="removeCollab(${originalIdx})">🗑️ Delete</button></div>`;
+        const rateInfo = collab.rate ? `<div style="background: var(--accent); color: white; padding: 6px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-bottom: 8px;">💰 Rate: $${collab.rate.amount} ${collab.rate.type === 'per_hour' ? '/hr' : collab.rate.type === 'per_task' ? '/task' : '(fixed)'}</div>` : '';
+        card.innerHTML = `<div class="post-header"><div class="post-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover; background-position: center;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="post-info" style="flex: 1;"><div class="post-user">${collab.personaName}</div><div class="post-meta">by ${collab.userName}</div><div class="post-meta">📍 ${collab.userLocation}</div><div class="post-meta">${collab.timestamp}</div></div></div><div style="margin-bottom: 10px;">${rateInfo}<div style="font-size: 11px; margin-bottom: 6px; font-weight: 600;">Work: ${collab.exampleTitle}</div><div style="font-size: 12px;">${collab.description}</div></div><div class="post-actions"><button class="btn btn-secondary btn-small" onclick="editCollab(${originalIdx})">✏️ Edit</button><button class="btn btn-danger btn-small" onclick="removeCollab(${originalIdx})">🗑️ Delete</button></div>`;
         feed.appendChild(card);
       } catch (e) {
         console.error('Error rendering collab card:', e);
@@ -1771,6 +1804,13 @@ function editCollab(idx) {
   updateCollabExampleOptions();
   document.getElementById('collabPublicExample').value = appState.examples.findIndex(ex => ex.title === collab.exampleTitle);
   document.getElementById('collabPostDesc').value = collab.description;
+  
+  // Restore rate information
+  if (collab.rate) {
+    document.getElementById('collabRateType').value = collab.rate.type;
+    document.getElementById('collabRateAmount').value = collab.rate.amount;
+  }
+  
   const req = collab.requirements || {};
   const br = req.budgetRange || null;
   const legacyBudget = typeof req.budget === 'number' ? req.budget : null;
@@ -1789,6 +1829,8 @@ function cancelEditCollab() {
   document.getElementById('collabPersona').value = '';
   document.getElementById('collabPublicExample').value = '';
   document.getElementById('collabPostDesc').value = '';
+  document.getElementById('collabRateType').value = '';
+  document.getElementById('collabRateAmount').value = '';
   document.getElementById('collabBudgetMin').value = '';
   document.getElementById('collabBudgetMax').value = '';
 }
