@@ -11,15 +11,22 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import { Strategy as GitHubStrategy } from 'passport-github2';
+import { Server as SocketIOServer } from 'socket.io';
+import http from 'http';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
+const httpServer = http.createServer(app);
+const io = new SocketIOServer(httpServer, {
+  cors: { origin: '*', credentials: true }
+});
 const port = process.env.PORT || 3000;
 const domain = process.env.DOMAIN || `http://localhost:${port}`;
 const stripeSecret = process.env.STRIPE_SECRET_KEY;
 const usersFile = process.env.USERS_FILE || path.join(process.cwd(), 'users.json');
+const messagesFile = path.join(process.cwd(), 'messages.json');
 
 const stripe = stripeSecret ? new Stripe(stripeSecret) : null;
 
@@ -165,7 +172,89 @@ const writeUsers = async (users) => {
   await fs.writeFile(usersFile, JSON.stringify(users, null, 2), 'utf8');
 };
 
+const readMessages = async () => {
+  try {
+    const raw = await fs.readFile(messagesFile, 'utf8');
+    const messages = JSON.parse(raw);
+    return Array.isArray(messages) ? messages : [];
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+};
+
+const writeMessages = async (messages) => {
+  await fs.writeFile(messagesFile, JSON.stringify(messages, null, 2), 'utf8');
+};
+
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+// Socket.io message handling
+io.on('connection', (socket) => {
+  console.log(`User connected: ${socket.id}`);
+
+  // Send all messages to new user
+  socket.on('get-messages', async (callback) => {
+    const messages = await readMessages();
+    callback(messages);
+  });
+
+  // Handle new message
+  socket.on('send-message', async (data, callback) => {
+    try {
+      const { userId, username, message, conversationWith } = data;
+      
+      if (!userId || !message || !conversationWith) {
+        return callback({ error: 'Missing required fields' });
+      }
+
+      const messages = await readMessages();
+      const newMessage = {
+        id: crypto.randomUUID(),
+        senderId: userId,
+        senderName: username,
+        recipientId: conversationWith,
+        text: message,
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+
+      messages.push(newMessage);
+      await writeMessages(messages);
+
+      // Emit to all users
+      io.emit('new-message', newMessage);
+      callback({ ok: true, message: newMessage });
+    } catch (error) {
+      console.error('Message error:', error);
+      callback({ error: error.message });
+    }
+  });
+
+  // Mark message as read
+  socket.on('mark-read', async (data, callback) => {
+    try {
+      const { messageId } = data;
+      const messages = await readMessages();
+      const msg = messages.find(m => m.id === messageId);
+      
+      if (msg) {
+        msg.read = true;
+        await writeMessages(messages);
+        io.emit('message-read', messageId);
+      }
+      callback({ ok: true });
+    } catch (error) {
+      callback({ error: error.message });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`User disconnected: ${socket.id}`);
+  });
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -349,6 +438,35 @@ app.post('/api/register', async (req, res) => {
 
 // Remove duplicate register endpoint below
 
+// Get all messages for a user
+app.get('/api/messages/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const messages = await readMessages();
+    const userMessages = messages.filter(m => 
+      m.senderId === userId || m.recipientId === userId
+    );
+    res.json(userMessages);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get conversation between two users
+app.get('/api/messages/:userId/:otherUserId', async (req, res) => {
+  try {
+    const { userId, otherUserId } = req.params;
+    const messages = await readMessages();
+    const conversation = messages.filter(m => 
+      (m.senderId === userId && m.recipientId === otherUserId) ||
+      (m.senderId === otherUserId && m.recipientId === userId)
+    ).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    res.json(conversation);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create checkout session
 app.post('/api/create-checkout', async (req, res) => {
   if (!stripe) {
@@ -452,6 +570,6 @@ app.get('/api/auth/github/callback',
   }
 );
 
-app.listen(port, () => {
+httpServer.listen(port, () => {
   console.log(`✅ Server running at ${domain}`);
 });

@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
   <script src="https://js.stripe.com/v3/"></script>
   <script src="stripe-config.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
     :root {
       --primary: #2196F3;
@@ -247,6 +248,13 @@
     .btn-github:hover { background: #f6f8fa; border-color: #24292e; }
     [data-theme="dark"] .btn-social { background: var(--surface); color: var(--text); border-color: var(--border); }
     [data-theme="dark"] .btn-social:hover { background: var(--border); }
+    .chat-message { padding: 8px 10px; margin: 4px 0; border-radius: 6px; max-width: 80%; word-wrap: break-word; }
+    .chat-message.sent { background: var(--primary); color: white; margin-left: auto; text-align: right; }
+    .chat-message.received { background: var(--border); color: var(--text); }
+    .chat-message .sender-name { font-size: 10px; font-weight: 600; opacity: 0.8; }
+    .conversation-item { padding: 8px; cursor: pointer; border-bottom: 1px solid var(--border); border-radius: 4px; font-size: 11px; }
+    .conversation-item:hover { background: var(--border); }
+    .conversation-item.active { background: var(--primary); color: white; }
   </style>
 </head>
 <body>
@@ -376,6 +384,7 @@
     <button class="tab-btn" onclick="switchTab('personas')">🎭 Personas</button>
     <button class="tab-btn" onclick="switchTab('examples')">🎵 Work</button>
     <button class="tab-btn" onclick="switchTab('collaborate')">🤝 Collab</button>
+    <button class="tab-btn" onclick="switchTab('messages')">💬 Messages</button>
     <button class="tab-btn" onclick="switchTab('profile')">👤 Profile</button>
     <button class="tab-btn" onclick="switchTab('money')">💰 Money</button>
     <button class="tab-btn" onclick="switchTab('settings')">⚙️ Settings</button>
@@ -500,6 +509,24 @@
           <span class="filter-badge" id="feedCount">0</span>
         </div>
         <div id="collabFeed">No posts yet</div>
+      </div>
+    </div>
+
+    <div id="messages" class="tab">
+      <div class="card">
+        <div class="card-header">💬 Messages</div>
+        <div style="display: flex; gap: 12px; height: 400px; margin-bottom: 12px;">
+          <div style="flex: 0 0 150px; border: 1px solid var(--border); border-radius: 8px; overflow-y: auto; background: var(--surface);">
+            <div id="conversationList" style="padding: 8px;"></div>
+          </div>
+          <div style="flex: 1; border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+            <div id="messageDisplay" style="flex: 1; overflow-y: auto; padding: 12px; background: var(--bg); font-size: 12px;"></div>
+            <div style="padding: 8px; border-top: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: nowrap;">
+              <input type="text" id="messageInput" placeholder="Type a message..." style="flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;" />
+              <button onclick="sendMessage()" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 11px; white-space: nowrap;">Send</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2458,6 +2485,125 @@ document.addEventListener('keydown', (e) => {
     document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
   }
 });
+
+// Chat Socket.io setup
+let socket = null;
+let currentChatUser = null;
+let conversations = {};
+
+function initSocket() {
+  if (socket) return;
+  socket = io();
+  
+  socket.on('connect', () => {
+    console.log('Connected to chat server');
+    loadMessages();
+  });
+
+  socket.on('new-message', (message) => {
+    conversations[message.senderId] = conversations[message.senderId] || [];
+    conversations[message.senderId].push(message);
+    
+    if (currentChatUser === message.senderId || currentChatUser === message.recipientId) {
+      displayMessages();
+    }
+    updateConversationList();
+  });
+
+  socket.on('message-read', (messageId) => {
+    Object.values(conversations).forEach(msgs => {
+      const msg = msgs.find(m => m.id === messageId);
+      if (msg) msg.read = true;
+    });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Disconnected from chat server');
+  });
+}
+
+function loadMessages() {
+  if (!socket || !appState.user) return;
+  
+  socket.emit('get-messages', (messages) => {
+    conversations = {};
+    messages.forEach(msg => {
+      const otherId = msg.senderId === appState.user.id ? msg.recipientId : msg.senderId;
+      if (!conversations[otherId]) conversations[otherId] = [];
+      conversations[otherId].push(msg);
+    });
+    updateConversationList();
+  });
+}
+
+function updateConversationList() {
+  const list = document.getElementById('conversationList');
+  if (!list) return;
+  
+  list.innerHTML = '';
+  Object.entries(conversations).forEach(([userId, messages]) => {
+    const lastMsg = messages[messages.length - 1];
+    const unread = messages.filter(m => m.recipientId === appState.user.id && !m.read).length;
+    const div = document.createElement('div');
+    div.className = `conversation-item ${currentChatUser === userId ? 'active' : ''}`;
+    div.innerHTML = `<strong>${lastMsg.senderName}</strong>${unread ? ` <span style="color: var(--danger);">(${unread})</span>` : ''}<br><span style="opacity: 0.7;">${lastMsg.text.substring(0, 30)}...</span>`;
+    div.onclick = () => selectConversation(userId);
+    list.appendChild(div);
+  });
+}
+
+function selectConversation(userId) {
+  currentChatUser = userId;
+  displayMessages();
+  updateConversationList();
+}
+
+function displayMessages() {
+  const display = document.getElementById('messageDisplay');
+  if (!display || !currentChatUser) return;
+  
+  display.innerHTML = '';
+  const messages = conversations[currentChatUser] || [];
+  messages.forEach(msg => {
+    const div = document.createElement('div');
+    div.className = `chat-message ${msg.senderId === appState.user.id ? 'sent' : 'received'}`;
+    div.innerHTML = `<div class="sender-name">${msg.senderName}</div><div>${msg.text}</div><div style="font-size: 9px; opacity: 0.7; margin-top: 2px;">${new Date(msg.timestamp).toLocaleTimeString()}</div>`;
+    display.appendChild(div);
+    
+    // Mark as read
+    if (msg.recipientId === appState.user.id && !msg.read) {
+      socket.emit('mark-read', { messageId: msg.id });
+    }
+  });
+  display.scrollTop = display.scrollHeight;
+}
+
+function sendMessage() {
+  const input = document.getElementById('messageInput');
+  if (!input || !input.value.trim() || !currentChatUser || !appState.user || !socket) return;
+  
+  const message = input.value.trim();
+  socket.emit('send-message', {
+    userId: appState.user.id,
+    username: appState.user.username,
+    message,
+    conversationWith: currentChatUser
+  }, (response) => {
+    if (response.ok) {
+      input.value = '';
+    }
+  });
+}
+
+// Initialize socket when user is logged in
+const originalSwitchTab = switchTab;
+switchTab = function(tabName) {
+  originalSwitchTab.call(this, tabName);
+  if (tabName === 'messages' && appState.user && !socket) {
+    initSocket();
+  }
+};
+
 </script>
 </body>
 </html>
