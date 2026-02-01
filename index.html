@@ -2411,14 +2411,39 @@ function initializeSettings() {
 }
 
 window.addEventListener('beforeunload', () => { saveAppState(); });
+console.log('=== MUSIC CONNECTZ LOADING ===');
+
 window.addEventListener('load', () => { 
-  loadAppState();
+  console.log('=== WINDOW LOAD EVENT FIRED ===');
+  try {
+    console.log('Starting loadAppState...');
+    loadAppState();
+    console.log('loadAppState completed');
+  } catch (e) {
+    console.error('ERROR in loadAppState:', e);
+  }
+  
   // Defer display updates to avoid blocking the UI
   setTimeout(() => {
-    updateAllDisplays();
-    switchTab(appState.currentTab || 'setup');
+    console.log('Starting updateAllDisplays...');
+    try {
+      updateAllDisplays();
+      console.log('updateAllDisplays completed');
+    } catch (e) {
+      console.error('ERROR in updateAllDisplays:', e);
+    }
+    
+    console.log('Starting switchTab...');
+    try {
+      switchTab(appState.currentTab || 'setup');
+      console.log('switchTab completed');
+    } catch (e) {
+      console.error('ERROR in switchTab:', e);
+    }
   }, 50);
+  
   setTimeout(initializeSettings, 100);
+  console.log('=== WINDOW LOAD HANDLERS REGISTERED ===');
 });
 
 document.addEventListener('keydown', (e) => {
