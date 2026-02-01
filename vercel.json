@@ -1,9 +1,7 @@
 {
   "version": 2,
   "buildCommand": "npm install",
-  "env": {
-    "STRIPE_SECRET_KEY": "@stripe_secret_key"
-  },
+  "outputDirectory": ".",
   "rewrites": [
     {
       "source": "/api/(.*)",
