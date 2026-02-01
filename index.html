@@ -2423,27 +2423,13 @@ window.addEventListener('load', () => {
     console.error('ERROR in loadAppState:', e);
   }
   
-  // Defer display updates to avoid blocking the UI
-  setTimeout(() => {
-    console.log('Starting updateAllDisplays...');
-    try {
-      updateAllDisplays();
-      console.log('updateAllDisplays completed');
-    } catch (e) {
-      console.error('ERROR in updateAllDisplays:', e);
-    }
-    
-    console.log('Starting switchTab...');
-    try {
-      switchTab(appState.currentTab || 'setup');
-      console.log('switchTab completed');
-    } catch (e) {
-      console.error('ERROR in switchTab:', e);
-    }
-  }, 50);
-  
-  setTimeout(initializeSettings, 100);
-  console.log('=== WINDOW LOAD HANDLERS REGISTERED ===');
+  console.log('=== INITIALIZATION COMPLETE - SKIPPING updateAllDisplays ===');
+  // Temporarily disabled to test for freeze source
+  // setTimeout(() => {
+  //   updateAllDisplays();
+  //   switchTab(appState.currentTab || 'setup');
+  // }, 50);
+  // setTimeout(initializeSettings, 100);
 });
 
 document.addEventListener('keydown', (e) => {
