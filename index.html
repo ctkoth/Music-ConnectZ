@@ -2414,22 +2414,9 @@ window.addEventListener('beforeunload', () => { saveAppState(); });
 console.log('=== MUSIC CONNECTZ LOADING ===');
 
 window.addEventListener('load', () => { 
-  console.log('=== WINDOW LOAD EVENT FIRED ===');
-  try {
-    console.log('Starting loadAppState...');
-    loadAppState();
-    console.log('loadAppState completed');
-  } catch (e) {
-    console.error('ERROR in loadAppState:', e);
-  }
-  
-  console.log('=== INITIALIZATION COMPLETE - SKIPPING updateAllDisplays ===');
-  // Temporarily disabled to test for freeze source
-  // setTimeout(() => {
-  //   updateAllDisplays();
-  //   switchTab(appState.currentTab || 'setup');
-  // }, 50);
-  // setTimeout(initializeSettings, 100);
+  console.log('=== WINDOW LOAD EVENT FIRED - PAGE IS INTERACTIVE ===');
+  document.body.style.backgroundColor = 'green';
+  alert('PAGE IS RESPONSIVE - INITIALIZATION TEST');
 });
 
 document.addEventListener('keydown', (e) => {
