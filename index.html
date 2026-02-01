@@ -469,6 +469,10 @@
             <div style="text-align: center; color: var(--text-light); font-size: 11px; padding: 20px;">Select an example above to see available skills</div>
           </div>
         </div>
+        <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);"><div style="font-weight: 600; font-size: 12px; margin-bottom: 10px; color: var(--primary);">💎 Royalty Agreement</div>
+          <div style="font-size: 10px; color: var(--text-light); margin-bottom: 10px;">Set the percentage royalty/cut collaborators earn from your work they contribute to.</div>
+          <div class="form-group"><label>💰 Royalty % for Collaborators *</label><input type="number" id="collabRoyaltyPercent" min="0" max="100" step="0.5" value="10" placeholder="10" /><div style="font-size: 9px; color: var(--text-light); margin-top: 4px;">Example: 10% means collaborators earn 10% of your future earnings from this work</div></div>
+        </div>
         <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border);"><div style="font-weight: 600; font-size: 12px; margin-bottom: 10px; color: var(--primary);">🎯 Collaborator Requirements</div>
           <div class="grid-2"><div class="form-group"><label>👥 Min Age</label><input type="number" id="collabMinAge" min="13" max="120" placeholder="13" /></div><div class="form-group"><label>👥 Max Age</label><input type="number" id="collabMaxAge" min="13" max="120" placeholder="120" /></div></div>
           <div class="grid-2"><div class="form-group"><label>📍 Max Distance (miles)</label><input type="number" id="collabMaxDistance" min="0" placeholder="Unlimited" /></div><div class="form-group"><label>💵 Budget per Collab ($ range)</label><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;"><input type="number" id="collabBudgetMin" min="0" step="0.01" placeholder="Min" /><input type="number" id="collabBudgetMax" min="0" step="0.01" placeholder="Max" /></div><div style="font-size: 10px; color: var(--text-light); margin-top: 4px;">Leave blank for no min/max.</div></div></div>
@@ -1830,6 +1834,9 @@ function postCollabRequest() {
     });
   }
   
+  // Get royalty percentage
+  const royaltyPercent = parseFloat(document.getElementById('collabRoyaltyPercent').value) || 10;
+  
   const budgetRange = (budgetMin !== null || budgetMax !== null) ? { min: budgetMin, max: budgetMax } : null;
   const collab = { 
     id: Date.now(), 
@@ -1845,6 +1852,7 @@ function postCollabRequest() {
     timestamp: new Date().toLocaleString(),
     rate: { type: rateType, amount: rateAmount },
     skillRates: skillRates,
+    royaltyPercent: royaltyPercent,
     requirements: { ageRange: {min: minAge, max: maxAge}, maxDistance: maxDist, budgetRange: budgetRange, minExperience: minExp, minProfileRating: minProfileRating, minPictureRating: minPictureRating, preferredGender: prefGender }, 
     ratings: [], 
     comments: [] 
@@ -1942,6 +1950,7 @@ function acceptCollab(collabIdx) {
       description: `Accepted collab: ${collab.exampleTitle}`,
       collabId: collab.id,
       skillRates: collab.skillRates,
+      royaltyPercent: collab.royaltyPercent || 10,
       posterPayment: posterPaysToAcceptor,
       posterPaymentDesc: `Payment from ${collab.userName} for your collaboration`
     };
@@ -1950,11 +1959,13 @@ function acceptCollab(collabIdx) {
     
     // Mark collab as accepted
     if (!collab.acceptedBy) collab.acceptedBy = [];
+    const royaltyPercent = collab.royaltyPercent || 10;
     collab.acceptedBy.push({
       userName: appState.user.name,
       acceptedDate: new Date().toLocaleString(),
       amountPaid: acceptorPaysToPoster,
-      amountToReceive: posterPaysToAcceptor
+      amountToReceive: posterPaysToAcceptor,
+      royaltyPercent: royaltyPercent
     });
     
     updateWalletDisplay();
@@ -1963,7 +1974,8 @@ function acceptCollab(collabIdx) {
     
     alert(`✅ Collaboration accepted! 
 💰 You paid: $${acceptorPaysToPoster.toFixed(2)} to ${collab.userName}
-💸 ${collab.userName} will pay: $${posterPaysToAcceptor.toFixed(2)} to you`);
+💸 ${collab.userName} will pay: $${posterPaysToAcceptor.toFixed(2)} to you
+💎 Royalty Agreement: You'll earn ${royaltyPercent}% of their future earnings from this work`);
   } catch (e) {
     console.error('acceptCollab error:', e);
     alert('❌ Error accepting collaboration: ' + e.message);
@@ -1992,6 +2004,10 @@ function renderCollabFeed() {
         card.className = 'post-card';
         const rateInfo = collab.rate ? `<div style="background: var(--accent); color: white; padding: 6px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-bottom: 8px;">💰 Your Collab Rate: $${collab.rate.amount} ${collab.rate.type === 'per_hour' ? '/hr' : collab.rate.type === 'per_task' ? '/task' : '(fixed)'}</div>` : '';
         
+        // Royalty info
+        const royaltyPercent = collab.royaltyPercent || 10;
+        const royaltyInfo = `<div style="background: #fff3cd; color: #856404; padding: 6px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-bottom: 8px; border-left: 3px solid #ffc107;">💎 Royalty: ${royaltyPercent}% to collaborators</div>`;
+        
         // Build skill rates display
         let skillRatesDisplay = '';
         if (collab.skillRates && Object.keys(collab.skillRates).length > 0) {
@@ -2015,7 +2031,7 @@ function renderCollabFeed() {
         
         const alreadyAcceptedMsg = alreadyAccepted ? `<div style="background: #cfe2ff; color: #084298; padding: 8px; border-radius: 4px; font-size: 11px; margin-bottom: 8px;">✔️ You already accepted this collaboration</div>` : '';
         
-        card.innerHTML = `<div class="post-header"><div class="post-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover; background-position: center;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="post-info" style="flex: 1;"><div class="post-user">${collab.personaName}</div><div class="post-meta">by ${collab.userName}</div><div class="post-meta">📍 ${collab.userLocation}</div><div class="post-meta">${collab.timestamp}</div></div></div><div style="margin-bottom: 10px;">${rateInfo}${skillRatesDisplay}${acceptanceInfo}${alreadyAcceptedMsg}<div style="font-size: 11px; margin-bottom: 6px; font-weight: 600;">Work: ${collab.exampleTitle}</div><div style="font-size: 12px;">${collab.description}</div></div><div class="post-actions" style="display: flex; gap: 6px; flex-wrap: wrap;">${acceptBtn}<button class="btn btn-secondary btn-small" onclick="editCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>✏️ Edit</button><button class="btn btn-danger btn-small" onclick="removeCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>🗑️ Delete</button></div>`;
+        card.innerHTML = `<div class="post-header"><div class="post-avatar" ${collab.userPic ? `style="background-image: url('${collab.userPic}'); background-size: cover; background-position: center;"` : ''}>${!collab.userPic ? '🎤' : ''}</div><div class="post-info" style="flex: 1;"><div class="post-user">${collab.personaName}</div><div class="post-meta">by ${collab.userName}</div><div class="post-meta">📍 ${collab.userLocation}</div><div class="post-meta">${collab.timestamp}</div></div></div><div style="margin-bottom: 10px;">${rateInfo}${royaltyInfo}${skillRatesDisplay}${acceptanceInfo}${alreadyAcceptedMsg}<div style="font-size: 11px; margin-bottom: 6px; font-weight: 600;">Work: ${collab.exampleTitle}</div><div style="font-size: 12px;">${collab.description}</div></div><div class="post-actions" style="display: flex; gap: 6px; flex-wrap: wrap;">${acceptBtn}<button class="btn btn-secondary btn-small" onclick="editCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>✏️ Edit</button><button class="btn btn-danger btn-small" onclick="removeCollab(${originalIdx})" ${!isMyCollab ? 'style="display:none;"' : ''}>🗑️ Delete</button></div>`;
         feed.appendChild(card);
       } catch (e) {
         console.error('Error rendering collab card:', e);
@@ -2050,6 +2066,11 @@ function editCollab(idx) {
       });
     }
   }, 100);
+  
+  // Restore royalty percentage
+  if (collab.royaltyPercent) {
+    document.getElementById('collabRoyaltyPercent').value = collab.royaltyPercent;
+  }
   
   const req = collab.requirements || {};
   const br = req.budgetRange || null;
