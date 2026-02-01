@@ -4,9 +4,8 @@
   <meta charset="UTF-8" />
   <title>Music ConnectZ v6 bi K-Oth</title>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
-  <!-- Stripe temporarily disabled to debug -->
-  <!-- <script src="https://js.stripe.com/v3/"></script> -->
-  <!-- <script src="stripe-config.js"></script> -->
+  <script src="https://js.stripe.com/v3/"></script>
+  <script src="stripe-config.js"></script>
   <style>
     :root {
       --primary: #2196F3;
@@ -2412,13 +2411,36 @@ function initializeSettings() {
 }
 
 window.addEventListener('beforeunload', () => { saveAppState(); });
-console.log('=== MUSIC CONNECTZ LOADING ===');
 
-window.addEventListener('load', () => { 
-  console.log('=== WINDOW LOAD EVENT FIRED - PAGE IS INTERACTIVE ===');
-  document.body.style.backgroundColor = 'green';
-  alert('PAGE IS RESPONSIVE - INITIALIZATION TEST');
-});
+console.log('=== PAGE LOADED - SCHEDULING INITIALIZATION ===');
+
+// Schedule initialization to happen asynchronously
+setTimeout(() => {
+  try {
+    console.log('Starting deferred initialization...');
+    loadAppState();
+    console.log('loadAppState complete');
+    
+    // Only update auth display, skip heavy renders
+    updateAuthDisplay();
+    console.log('updateAuthDisplay complete');
+    
+    // Show the setup tab by default
+    const setupTab = document.getElementById('setup');
+    if (setupTab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      setupTab.classList.add('active');
+      const allButtons = document.querySelectorAll('.tab-btn');
+      if (allButtons.length > 0) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        allButtons[0].classList.add('active');
+      }
+    }
+    console.log('=== INITIALIZATION COMPLETE ===');
+  } catch (e) {
+    console.error('Initialization error:', e);
+  }
+}, 100);
 
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey) {
