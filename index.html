@@ -1205,8 +1205,12 @@ let appState = {
 };
 
 const apiBase = (() => {
-  // Always use localhost:3000 for API calls
-  return 'http://localhost:3000';
+  // Auto-detect API base: localhost for dev, production URL for Render
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:3000';
+  }
+  // Production: use current origin (will work on Render)
+  return window.location.origin;
 })();
 
 // Storage helpers to avoid crashes when storage is blocked
@@ -3465,7 +3469,12 @@ let conversations = {};
 
 function initSocket() {
   if (socket) return;
-  socket = io();
+  socket = io(apiBase, {
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: 5
+  });
   
   socket.on('connect', () => {
     console.log('Connected to chat server');
